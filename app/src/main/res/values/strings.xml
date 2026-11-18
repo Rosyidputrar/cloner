@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="id">
+    <string name="app_name">Kembar</string>
+
+    <!-- Top-level navigation -->
+    <string name="nav_home">Beranda</string>
+    <string name="nav_settings">Pengaturan</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_skip">Lewati</string>
+    <string name="onboarding_next">Lanjut</string>
+    <string name="onboarding_start">Mulai</string>
+    <string name="onboarding_page_position">Halaman %1$d dari %2$d</string>
+    <string name="onboarding_1_title">Satu aplikasi, banyak akun</string>
+    <string name="onboarding_1_body">Kembar bikin salinan aplikasi yang sudah ada di HP kamu. Jadi kamu bisa pakai akun kedua, ketiga, dan seterusnya tanpa bolak-balik keluar-masuk akun.</string>
+    <string name="onboarding_2_title">Datanya terpisah</string>
+    <string name="onboarding_2_body">Tiap clone punya data, login, dan notifikasi sendiri. Aplikasi aslinya nggak diutak-atik sama sekali.</string>
+    <string name="onboarding_3_title">Clone selalu kelihatan beda</string>
+    <string name="onboarding_3_body">Nama clone diberi tanda \"Kembar 1\", \"Kembar 2\", dan seterusnya, supaya kamu nggak salah buka aplikasi.</string>
+    <string name="onboarding_4_title">Nggak semua aplikasi bisa</string>
+    <string name="onboarding_4_body">Aplikasi bank, dompet digital, dan aplikasi yang memeriksa keasliannya biasanya menolak jalan sebagai clone. Kami kasih tahu dulu sebelum kamu mulai.</string>
+
+    <!-- Disclaimer -->
+    <string name="disclaimer_title">Sebelum mulai, baca ini dulu ya</string>
+    <string name="disclaimer_intro">Kembar membuat clone dengan nama paket dan tanda tangan baru. Ini artinya ada beberapa hal yang perlu kamu tahu:</string>
+    <string name="disclaimer_point_compat_title">Nggak semua aplikasi mau jalan</string>
+    <string name="disclaimer_point_compat_body">Aplikasi yang memeriksa keasliannya sendiri, termasuk aplikasi bank dan dompet digital, biasanya menolak jalan sebagai clone. Kembar nggak akan mengakali pemeriksaan itu.</string>
+    <string name="disclaimer_point_google_title">Login Google dan notifikasi bisa nggak jalan</string>
+    <string name="disclaimer_point_google_body">Layanan Google mengenali aplikasi dari tanda tangannya. Karena tanda tangan clone berbeda, login dengan Google dan notifikasi push sering nggak berfungsi.</string>
+    <string name="disclaimer_point_account_title">Ada risiko akun dibatasi</string>
+    <string name="disclaimer_point_account_body">Beberapa aplikasi, misalnya WhatsApp, bisa menganggap clone sebagai aplikasi nggak resmi dan membatasi atau memblokir akunmu. Kalau aplikasinya punya fitur multi-akun bawaan, lebih aman pakai itu.</string>
+    <string name="disclaimer_point_tos_title">Kamu yang menanggung syarat dan ketentuannya</string>
+    <string name="disclaimer_point_tos_body">Tiap aplikasi punya aturan sendiri soal jumlah akun dan aplikasi pihak ketiga. Pastikan kamu mematuhinya.</string>
+    <string name="disclaimer_point_data_title">Data di dalam clone nggak bisa dicadangkan Kembar</string>
+    <string name="disclaimer_point_data_body">Kalau clone dihapus, datanya ikut hilang. Pakai fitur cadangan dari aplikasinya sendiri (misalnya cadangan chat) untuk data penting.</string>
+    <string name="disclaimer_point_honest_title">Kembar main jujur</string>
+    <string name="disclaimer_point_honest_body">Kembar nggak pernah mengakali lisensi, pembayaran, iklan, DRM, atau sistem keamanan aplikasi lain, dan clone selalu ditandai sebagai clone.</string>
+    <string name="disclaimer_understood">Aku sudah baca dan paham risikonya</string>
+    <string name="disclaimer_accept">Setuju dan lanjut</string>
+    <string name="disclaimer_back">Kembali</string>
+    <string name="disclaimer_save_failed">Persetujuanmu belum tersimpan karena penyimpanan HP sedang bermasalah. Coba lagi sebentar lagi.</string>
+</resources>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="id">
+    <!-- Pengaturan -->
+    <string name="feature_settings_title">Pengaturan</string>
+    <string name="feature_settings_section_appearance">Tampilan</string>
+    <string name="feature_settings_theme_system">Ikuti sistem</string>
+    <string name="feature_settings_theme_system_summary">Terang atau gelap, sesuai pengaturan HP kamu</string>
+    <string name="feature_settings_theme_light">Terang</string>
+    <string name="feature_settings_theme_dark">Gelap</string>
+    <string name="feature_settings_dynamic_color">Warna dinamis</string>
+    <string name="feature_settings_dynamic_color_summary">Ambil warna dari wallpaper kamu</string>
+    <string name="feature_settings_section_info">Info</string>
+    <string name="feature_settings_about">Tentang Kembar</string>
+    <string name="feature_settings_about_summary">Versi aplikasi, disclaimer, dan privasi</string>
+
+    <!-- Tentang -->
+    <string name="feature_settings_about_title">Tentang Kembar</string>
+    <string name="feature_settings_about_version">Versi %1$s</string>
+    <string name="feature_settings_about_body">Kembar bikin salinan aplikasi yang sudah terpasang di HP kamu, supaya kamu bisa pakai lebih dari satu akun. Setiap clone dapat nama paket dan tanda tangan baru, dan selalu ditandai \"Kembar\" supaya nggak ketuker sama aslinya.</string>
+    <string name="feature_settings_about_privacy_title">Privasi</string>
+    <string name="feature_settings_about_privacy_body">Kembar nggak mengumpulkan data analitik, nggak butuh akun, dan semua proses clone terjadi di HP kamu sendiri.</string>
+    <string name="feature_settings_about_affiliation_title">Bukan aplikasi resmi</string>
+    <string name="feature_settings_about_affiliation_body">Kembar nggak ada hubungannya dengan pembuat aplikasi yang kamu clone. Nama dan merek tiap aplikasi tetap milik pemiliknya masing-masing.</string>
+    <string name="feature_settings_about_read_disclaimer">Baca lagi disclaimer</string>
+    <string name="feature_settings_back">Kembali</string>
+</resources>

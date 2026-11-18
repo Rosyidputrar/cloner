@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kembar_brand">#006A6A</color>
+    <color name="kembar_brand_light">#9CF1F0</color>
+    <color name="kembar_on_brand">#FFFFFF</color>
+</resources>

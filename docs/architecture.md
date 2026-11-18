@@ -80,6 +80,8 @@ Rules:
   `ArscPatcher`, `AlignedZipWriter`) uses no Android APIs, so it is unit-tested on the
   host JVM against fixtures built with `aapt2`/`d8` and verified with
   `apksigner`/`zipalign` from build-tools 34.0.0.
+- `:core:testing` holds test-only helpers (fake repositories, the JUnit 5 main-dispatcher
+  extension). Only `testImplementation` depends on it, so it never ships in the APK.
 - No NDK module.
 
 ## 3. Engine internals (`:engine:impl`)

@@ -1,0 +1,33 @@
+# Overrides on top of detekt's default configuration (buildUponDefaultConfig = true).
+
+naming:
+  # Navigation files hold a route object plus its NavGraphBuilder extension; ktlint's
+  # filename rule already covers files with one declaration.
+  MatchingDeclarationName:
+    active: false
+  FunctionNaming:
+    # Composable functions use PascalCase by convention.
+    ignoreAnnotated: ['Composable']
+
+complexity:
+  LongMethod:
+    ignoreAnnotated: ['Composable']
+  LongParameterList:
+    ignoreAnnotated: ['Composable']
+    ignoreDefaultParameters: true
+  TooManyFunctions:
+    ignorePrivate: true
+    ignoreAnnotatedFunctions: ['Composable', 'Preview', 'PreviewLightDark']
+
+style:
+  MagicNumber:
+    # Design tokens and previews are numeric by nature.
+    ignorePropertyDeclaration: true
+    ignoreAnnotated: ['Composable', 'Preview', 'PreviewLightDark']
+    excludes: ['**/test/**', '**/androidTest/**', '**/theme/**']
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview', 'PreviewLightDark']
+  MaxLineLength:
+    maxLineLength: 120
+  ForbiddenComment:
+    active: true

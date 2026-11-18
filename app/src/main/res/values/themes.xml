@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Window theme only. All in-app colors come from KembarTheme in Compose. -->
+    <style name="Theme.Kembar" parent="Theme.Material3.DayNight.NoActionBar" />
+
+    <!-- Shown while preferences load and the start screen is chosen. -->
+    <style name="Theme.Kembar.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/kembar_brand</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.Kembar</item>
+    </style>
+</resources>

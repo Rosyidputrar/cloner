@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="id">
+    <string name="feature_manager_title">Beranda</string>
+    <string name="feature_manager_empty_title">Belum ada clone</string>
+    <string name="feature_manager_empty_body">Clone yang kamu buat bakal muncul di sini, lengkap dengan tanda \"Kembar\" supaya nggak ketuker sama aplikasi aslinya.</string>
+</resources>

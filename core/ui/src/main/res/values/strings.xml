@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="id">
+    <!-- Generic states -->
+    <string name="core_ui_loading">Sebentar ya…</string>
+    <string name="core_ui_retry">Coba lagi</string>
+    <string name="core_ui_back">Kembali</string>
+    <string name="core_ui_open">Buka</string>
+
+    <!-- Clone badge: shown on every clone icon so it never looks like the original -->
+    <string name="core_ui_clone_badge">Kembar %1$d</string>
+    <string name="core_ui_clone_badge_description">Clone ke-%1$d</string>
+    <string name="core_ui_clone_icon_description">%1$s, clone ke-%2$d</string>
+
+    <!-- Stage indicator statuses, read by TalkBack -->
+    <string name="core_ui_stage_pending">Menunggu</string>
+    <string name="core_ui_stage_running">Sedang berjalan</string>
+    <string name="core_ui_stage_done">Selesai</string>
+    <string name="core_ui_stage_failed">Gagal</string>
+    <string name="core_ui_stage_semantics">Tahap %1$d dari %2$d, %3$s: %4$s</string>
+</resources>
