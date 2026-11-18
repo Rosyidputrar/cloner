@@ -1,0 +1,23 @@
+# Risk register
+
+Scale: Likelihood (L) and Impact (I) are 1 (low) to 3 (high). Score = L × I.
+Review this register at the end of every phase.
+
+| ID | Risk | L | I | Score | Mitigation | Verify via | Phase |
+|----|------|---|---|-------|-----------|-----------|-------|
+| R1 | Managed-profile provisioning fails or behaves differently on some OEM builds (Xiaomi HyperOS, ColorOS, FuntouchOS). | 2 | 3 | 6 | Spike S1 on real devices before Phase 3 sign-off. Per-OEM troubleshooting article in Bantuan. Clear "perangkat tidak didukung" screen with the reason. | S1 | 1–3 |
+| R2 | Device already has a work profile (employer, Shelter, Insular, Samsung features that use one), so Kembar can't run. | 2 | 3 | 6 | Detect with `isProvisioningAllowed` + `UserManager.getUserProfiles()`. Explain in Indonesian and what the user can do (remove the other profile only if they own it). Never touch a profile Kembar doesn't own. | Instrumented test + manual | 3 |
+| R3 | Cross-profile command channel is unreliable (activity-start restrictions, OEM intent resolver changes). | 2 | 3 | 6 | Spike S2 picks the channel. Every command carries a request ID and a timeout. Commands are idempotent, and state is reconciled from `LauncherApps` on resume. | S2 | 3 |
+| R4 | Target apps refuse to run in a work profile (banking/e-wallet). | 3 | 2 | 6 | Known-incompatible list (bundled JSON, updated with releases) shown in the picker with the reason. Explainer page. No bypass. | S3/S4 | 2, 3 |
+| R5 | Push / Sign-In / Play Integrity don't work in the profile for some apps (GMS or Play Store not enabled in profile on some OEMs). | 2 | 2 | 4 | Agent enables Play services/Play Store in profile when present (`enableSystemApp`). Help article on adding a Google account inside the profile. | S4 | 3 |
+| R6 | Users misunderstand limits (one clone per app, no data backup, launcher label unchanged) and leave bad reviews or blame Kembar for data loss. | 3 | 2 | 6 | Limits stated in onboarding, picker, detail screen and help. Destructive actions (clear data, remove clone, remove profile) need explicit confirmation naming what is lost. | UX review, Phase 6 | 1–6 |
+| R7 | Losing Kembar's signing key blocks updates and would mean removing the profile and every clone. | 1 | 3 | 3 | Offline key backup. v3 signing with rotation lineage. Key never in repo or CI logs. | Release checklist | 7 |
+| R8 | Removing the profile (by user, by Kembar, or via OEM settings) wipes all clone data. | 2 | 3 | 6 | Typed confirmation ("HAPUS") before Kembar removes the profile. Detect external removal in the health check and explain what happened. | Manual | 4, 5 |
+| R9 | Malicious app in personal profile sends forged commands to the profile agent (intent spoofing). | 2 | 3 | 6 | Command activity protected by a `signature`-level custom permission. Agent checks the calling package, which must equal its own. Payloads are versioned, size-limited, strictly decoded. No exported components without a permission. | Phase 6 threat model + tests | 3, 6 |
+| R10 | Kembar's profile-owner powers are abused by a compromised Kembar build (e.g. tampered sideloaded APK). | 1 | 3 | 3 | Publish SHA-256 of release APKs and the signing cert fingerprint. Reproducible CI builds. Minimal set of DPM calls. No network in the agent. | Phase 7 | 6, 7 |
+| R11 | Settings backup file leaks clone list (which apps the user clones). | 2 | 2 | 4 | AES-256-GCM with a passphrase-derived key. `allowBackup=false` and `dataExtractionRules` exclude everything. No plaintext export. | Phase 5 tests | 5 |
+| R12 | App lock gives a false sense of security (bypass via launcher work tab). | 3 | 2 | 6 | Say so plainly in the lock screen settings. Offer Android's work-profile lock as the strong option. | UX review | 6 |
+| R13 | Google Play rejects the listing later. | 2 | 1 | 2 | Sideload is the primary channel. Play compliance checklist prepared in Phase 7. No sensitive permissions used. | Phase 7 | 7 |
+| R14 | Latest targetSdk behaviour changes (e.g. new background/intent restrictions) break the cross-profile channel. | 2 | 2 | 4 | CI instrumented tests on the newest emulator image. Behaviour-change review each Android release. | CI | 7 |
+| R15 | Per-clone network toggle (in-profile VPN) is not feasible or conflicts with a user's own VPN. | 2 | 1 | 2 | Gated by spike S5. Fallback is suspend. Feature hidden if unsupported. | S5 | 5 |
+| R16 | Legal/ToS: some apps forbid multiple accounts per person/device. | 2 | 2 | 4 | Disclaimer screen (must accept) saying the user is responsible for each app's terms. Kembar never modifies apps or hides that a clone is a clone. | Phase 6 | 1, 6 |
