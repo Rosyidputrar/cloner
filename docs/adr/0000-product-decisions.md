@@ -1,17 +1,30 @@
 # ADR-0000: Product decisions
 
-- Status: **Accepted** (owner delegated these choices: "pilihkan yang terbaik")
+- Status: **Accepted**
 - Date: 2026-11-18
-
-These five decisions answer the clarifying questions asked before architecture work.
+- History: the owner delegated the first set of choices ("pilihkan yang terbaik"), then
+  changed the engine to repackaging (clones outside an isolated profile) and pinned the toolchain.
 
 | # | Topic | Decision | Why |
 |---|-------|----------|-----|
-| 1 | Distribution | **Sideload first** (signed APK on GitHub Releases). Keep the codebase Play-compatible (no hidden APIs, no `QUERY_ALL_PACKAGES`, no `REQUEST_INSTALL_PACKAGES`) so a Play listing can be attempted later with the compliance checklist from Phase 7. | Play review of profile-owner consumer apps is uncertain. Sideloading lets real users test the product now without boxing in the architecture. |
-| 2 | Engine | **Managed (work) profile engine**, see [ADR-0001](0001-clone-engine.md). One clone per app in v1. | Only option where the apps users want keep push, Sign-In and Play Integrity, without modifying or bypassing anything. |
-| 3 | Platform range | **minSdk 29 (Android 10)**, targetSdk/compileSdk = latest stable API level (verified when the project is created in Phase 1). Test matrix: Pixel/AOSP, Samsung One UI, Xiaomi HyperOS, Oppo ColorOS, Vivo. Must-check apps: WhatsApp, WhatsApp Business, Instagram, Telegram, Facebook Lite, Shopee, Tokopedia, one banking app (expected to fail; used to test the incompatibility explainer). | Brief targets Android 10+. `installExistingPackage` needs API 28; API 29 removes several pre-Q special cases. |
-| 4 | Root | **Never required, never used.** | Simpler threat model, no SafetyNet/Integrity side effects, no policy issues. |
-| 5 | Branding | App name **Kembar**. `applicationId` **`io.github.rosyidputrar.kembar`**. Material 3 with dynamic color on Android 12+ and a teal seed (`#00696D`) fallback palette. License: decided in Phase 7 (Apache-2.0 suggested). | "Kembar" (twin) is short, Indonesian, and says what the app does. The `io.github.<owner>` namespace is collision-free and needs no domain. |
+| 1 | Distribution | **Sideload only** (signed APK on GitHub Releases). | A repackaging engine needs `REQUEST_INSTALL_PACKAGES` and installs modified copies of third-party apps. Google Play's policy does not allow that. |
+| 2 | Engine | **Repackaging (B)**, see [ADR-0001](0001-clone-engine.md). Multiple clones per app. | Owner requirement: clones are normal apps, not inside a work profile. |
+| 3 | Platform range | **minSdk 29 (Android 10)**, **compileSdk/targetSdk 34**. Must-check apps: Telegram, Facebook Lite, Shopee, Tokopedia, Instagram, WhatsApp (warning only), one banking app (expected to fail). | Brief targets Android 10+. Target 34 is the highest that build-tools 34.0.0 / AGP 8.5.2 fully support. |
+| 4 | Root | **Never required, never used.** | Simpler threat model, no policy or integrity side effects. |
+| 5 | Branding | App name **Kembar**, `applicationId` **`io.github.rosyidputrar.kembar`**, Material 3 with dynamic color on Android 12+ and a teal fallback palette (primary `#006A6A`). License decided in Phase 7. | Short Indonesian name ("twin"). Collision-free namespace. |
+
+## Toolchain (pinned by owner)
+
+| Tool | Version |
+|------|---------|
+| JDK | Eclipse Temurin 17 |
+| Gradle | 8.7 (wrapper) |
+| Android Gradle Plugin | 8.5.2 (requires Gradle ≥ 8.7; matches apksig 8.5.2) |
+| Android SDK | platform 34, build-tools 34.0.0 |
+| Kotlin | 2.0.20 (+ Compose compiler plugin, KSP 2.0.20-1.0.25) |
+| apksig | 8.5.2 |
+| AndroidX / Material | Compose BOM 2024.09.03, Material Components 1.12.0 (window themes only) |
+| Build-tools CLIs | aapt2, apksigner, zipalign, d8 (tests/verification only), keytool (release key) |
 
 ## Language
 

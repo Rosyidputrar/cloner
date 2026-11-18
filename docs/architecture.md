@@ -1,63 +1,54 @@
 # Kembar: architecture
 
-Status: proposed, depends on [ADR-0001](adr/0001-clone-engine.md) being accepted.
+Engine: **B, repackaging** ([ADR-0001](adr/0001-clone-engine.md)).
 
-## 1. Runtime topology
-
-The same Kembar APK runs as two instances, each in a different Android user:
+## 1. Runtime picture
 
 ```mermaid
 flowchart LR
-  subgraph P["Personal profile (user 0)"]
-    UI["Kembar UI<br/>(Compose, ViewModels)"]
-    DB[("Room: clone registry")]
-    WM["WorkManager<br/>health / update checks"]
-    LA["LauncherApps /<br/>CrossProfileApps"]
-    ORIG["Original app<br/>(e.g. WhatsApp)"]
+  subgraph Device["Main user profile"]
+    ORIG["Original app<br/>com.example.chat<br/>(Play signature)"]
+    subgraph K["Kembar (io.github.rosyidputrar.kembar)"]
+      UI["Compose UI + ViewModels"]
+      DB[("Room: clone registry")]
+      WM["WorkManager<br/>CloneWorker (foreground, dataSync)<br/>HealthCheckWorker, UpdateCheckWorker"]
+      ENG["CloneEngine<br/>(:engine:impl)"]
+      KS[("FileKeystore<br/>PKCS#12, one key per clone")]
+    end
+    C1["Clone 1<br/>com.example.chat.kembar1<br/>(Kembar key #1)"]
+    C2["Clone 2<br/>com.example.chat.kembar2<br/>(Kembar key #2)"]
+    PI["System PackageInstaller"]
   end
-  subgraph W["Managed profile (user N) — Kembar is profile owner"]
-    AG["Kembar profile agent<br/>(DeviceAdminReceiver +<br/>command activity)"]
-    DPM["DevicePolicyManager"]
-    CLONE["Clone = same package,<br/>same signature,<br/>separate user data"]
-  end
+  ORIG -- "read base.apk + splits<br/>(world-readable)" --> ENG
   UI --> DB
-  WM --> DB
-  UI -- "cross-profile command intent<br/>(spike S2)" --> AG
-  AG --> DPM
-  DPM -- "installExistingPackage /<br/>clearApplicationUserData /<br/>setPackagesSuspended" --> CLONE
-  UI -- "startMainActivity(component, workUser)" --> LA --> CLONE
-  ORIG -. "shared APK code<br/>(updates apply to both)" .- CLONE
+  UI -- "enqueue / observe / cancel" --> WM --> ENG
+  ENG --> KS
+  ENG -- "session install<br/>(user confirms)" --> PI --> C1 & C2
+  UI -- "launch via getLaunchIntentForPackage" --> C1
 ```
 
-Key points:
-
-- The **personal-side instance** owns the UI, the clone registry (Room) and scheduling.
-  It can list and launch apps in the profile through `LauncherApps` (API 21) and
-  `CrossProfileApps` (API 28) without special permissions.
-- The **profile-side instance** ("agent") is the profile owner. Only it can call
-  `DevicePolicyManager` methods that act on the profile. It has no UI except a translucent
-  command activity, and stores no user data beyond what it needs to apply settings.
-- The two instances can't share files or databases (different users). They talk through
-  explicit, Kembar-only cross-profile intents. These are protected by a signature-level
-  custom permission and by checking the calling package, and carry only small,
-  versioned, `@Serializable` command payloads.
+Every clone is an ordinary app with its own UID, data directory, notification channels,
+WebView data and FCM identity (which may not work, see ADR-0001 L2).
 
 ## 2. Module graph
+
+Modules are created in the phase that first needs them, so no module is ever empty.
 
 ```mermaid
 flowchart TD
   app[":app"]
-  fa[":feature:applist"]
-  fc[":feature:clone"]
-  fm[":feature:manager"]
-  fs[":feature:settings"]
-  cui[":core:ui"]
-  cc[":core:common"]
-  cd[":core:data"]
-  cdb[":core:database"]
-  ea[":engine:api"]
-  ei[":engine:impl"]
-  bp[":baselineprofile<br/>(com.android.test, Phase 7)"]
+  fa[":feature:applist (P2)"]
+  fc[":feature:clone (P3)"]
+  fm[":feature:manager (P1)"]
+  fs[":feature:settings (P1)"]
+  cui[":core:ui (P1)"]
+  cc[":core:common (P1)"]
+  cd[":core:data (P1)"]
+  cdb[":core:database (P3)"]
+  ea[":engine:api (P3)"]
+  ei[":engine:impl (P3)"]
+  bl["build-logic<br/>(convention plugins, P1)"]
+  bp[":baselineprofile (P7)"]
 
   app --> fa & fc & fm & fs
   app --> ei
@@ -74,73 +65,40 @@ flowchart TD
   ei --> cc
   ea --> cc
   bp -.-> app
+  bl -. "applies plugins" .-> app & fa & fc & fm & fs & cui & cd & cdb & ei
 ```
 
 Rules:
 
 - Feature modules never depend on each other or on `:engine:impl`. Navigation is wired in `:app`.
 - `:core:data` exposes repository **interfaces and domain models**. Implementations are
-  `internal` and bound with Hilt. There is no separate `:core:domain` module: use cases
-  live in the feature module that owns them, which keeps the graph to the modules the brief lists.
-- `:engine:api` has no Android-framework types in its public surface except `UserHandle`
-  wrappers. That makes it testable with plain JUnit.
-- `:engine:impl` holds the managed-profile engine, the `DeviceAdminReceiver`, the profile
-  agent and the command protocol. Only `:app` sees it, to bind `CloneEngine`.
-- No NDK module. Nothing in the managed-profile engine needs native code (see ADR-0001).
+  `internal` and bound with Hilt. Use cases live in the feature module that owns them.
+- Onboarding, disclaimer and splash live in `:app`, because they decide the start
+  destination and belong to no single feature.
+- `:engine:api` is the contract (`CloneEngine`, `CloneRequest`, `CloneProgress`, `EngineError`).
+- `:engine:impl` holds the pipeline. Its binary-format code (`StringPool`, `AxmlPatcher`,
+  `ArscPatcher`, `AlignedZipWriter`) uses no Android APIs, so it is unit-tested on the
+  host JVM against fixtures built with `aapt2`/`d8` and verified with
+  `apksigner`/`zipalign` from build-tools 34.0.0.
+- No NDK module.
 
-## 3. Engine API (shape, finalized in Phase 3)
+## 3. Engine internals (`:engine:impl`)
 
-```kotlin
-interface CloneEngine {
-    val id: EngineId                                        // WORK_PROFILE
-    fun environment(): Flow<EngineEnvironment>             // Unsupported(reason) / NeedsSetup / Ready(profile) / Paused
-    suspend fun assess(packageName: String): Compatibility // Compatible / LikelyIncompatible(reasons) / Blocked(reason)
-    fun create(request: CloneRequest): Flow<CloneProgress> // stage events, cancellable via coroutine cancellation
-    suspend fun launch(clone: CloneRef): EngineResult<Unit>
-    suspend fun clearData(clone: CloneRef): EngineResult<Unit>
-    suspend fun remove(clone: CloneRef): EngineResult<Unit>
-    suspend fun health(clone: CloneRef): HealthReport
-}
-```
-
-`EngineResult` is a sealed type with typed `EngineError` codes (no exceptions across the
-boundary). The UI maps each code to an Indonesian message that says **what happened** and
-**what to do next**.
+| Class | Responsibility |
+|-------|----------------|
+| `CloneAnalyzer` | Reads `PackageInfo`, base + split paths, `targetSdkVersion`, `sharedUserId`, native-lib layout, Google-services markers. Checks free space. Applies the bundled compatibility list. Returns `Compatibility` with Indonesian-mappable reason codes. |
+| `StringPool` | Parses and serializes `ResStringPool` chunks (UTF-8 and UTF-16, styles preserved). Appends strings. |
+| `AxmlPatcher` | Parses binary XML chunks (string pool, resource map, namespaces, elements, CDATA). Applies `ManifestRewriteRules` (section 4.1 of ADR-0001), matching attributes by **resource ID** (e.g. `android:name` = `0x01010003`) rather than by name. Re-serializes the result. |
+| `ArscPatcher` | Renames the `ResTable_package.name` field (`char16[128]`) of the app's package in `resources.arsc` (base and config splits). Leaves everything else alone. |
+| `AlignedZipWriter` | Streams entries from the source APK into a new ZIP. Swaps in the patched manifest/arsc and drops `META-INF` v1 signature files. Keeps STORED entries STORED: `resources.arsc` 4-byte aligned (required for targetSdk ≥ 30), `.so` 16 KB aligned, others 4-byte aligned. Never loads a whole APK into memory. |
+| `FileKeystore` | PKCS#12 file in `noBackupFilesDir`. Random password, encrypted by an Android Keystore AES-256-GCM key. One EC P-256 key + self-signed certificate per clone (alias = clone id). Passphrase-encrypted export/import. |
+| `CloneSigner` | apksig 8.5.2 `ApkSigner`: v2 + v3, v1 off, `minSdkVersion` 29, `setAlignmentPreserved(true)`. |
+| `ApkInstaller` | `PackageInstaller` session (`MODE_FULL_INSTALL`, `setPackageSource(PACKAGE_SOURCE_LOCAL_FILE)` on API 33+, `setRequireUserAction(USER_ACTION_NOT_REQUIRED)` for updates on API 31+). Writes base + splits in one session, commits with a mutable `PendingIntent`, and surfaces `STATUS_PENDING_USER_ACTION` to the UI or a notification. |
+| `CloneEngine` (impl) | Orchestrates the stages, emits `CloneProgress`, and cleans up the work directory on success, failure or cancellation. |
 
 ## 4. Clone pipeline
 
-Stages (shown in the UI): **Analisis → Siapkan ruang → Pasang → Atur → Verifikasi**.
-
-### 4.1 One-time setup (profile provisioning)
-
-```mermaid
-sequenceDiagram
-  autonumber
-  actor U as User
-  participant UI as Kembar UI (personal)
-  participant VM as SetupViewModel
-  participant EN as WorkProfileEngine
-  participant SYS as Android ManagedProvisioning
-  participant AG as Kembar agent (profile)
-
-  U->>UI: "Siapkan ruang clone"
-  UI->>VM: UiEvent.StartSetup
-  VM->>EN: environment()
-  EN-->>VM: NeedsSetup (FEATURE_MANAGED_USERS ok, isProvisioningAllowed = true)
-  VM-->>UI: UiEffect.LaunchProvisioning(intent)
-  UI->>SYS: startActivityForResult(ACTION_PROVISION_MANAGED_PROFILE)
-  SYS->>U: System consent screens
-  U->>SYS: Accept
-  SYS->>AG: DeviceAdminReceiver.onProfileProvisioningComplete
-  AG->>AG: setProfileEnabled, setProfileName("Kembar"),<br/>addCrossProfileIntentFilter(Kembar commands),<br/>enable GMS/Play Store in profile if present
-  SYS-->>UI: RESULT_OK
-  UI->>VM: UiEvent.SetupResult(ok)
-  VM->>EN: environment()
-  EN-->>VM: Ready(profile)
-  VM-->>UI: UiState(ready)
-```
-
-### 4.2 Creating a clone
+Stages shown in the UI: **Analisis → Salin → Modifikasi → Tanda tangan → Pasang**.
 
 ```mermaid
 sequenceDiagram
@@ -149,99 +107,100 @@ sequenceDiagram
   participant UI as Proses Clone screen
   participant VM as CloneProgressViewModel
   participant REPO as CloneRepository
+  participant WM as WorkManager / CloneWorker
+  participant AN as CloneAnalyzer
+  participant ZW as AlignedZipWriter + AxmlPatcher + ArscPatcher
+  participant KS as FileKeystore
+  participant SG as CloneSigner (apksig)
+  participant PI as ApkInstaller / PackageInstaller
   participant DB as Room
-  participant EN as WorkProfileEngine (personal)
-  participant AG as Kembar agent (profile)
-  participant DPM as DevicePolicyManager (profile)
-  participant LA as LauncherApps
 
-  U->>UI: Pick app, tap "Buat clone"
+  U->>UI: Pick app, confirm warnings, tap "Buat clone"
   UI->>VM: UiEvent.Start(packageName)
-  VM->>REPO: createClone(packageName)
-  REPO->>DB: insert clone_jobs(state=RUNNING, stage=ANALYZE)
-  REPO->>EN: create(request)
-  Note over EN: Stage 1 — Analisis
-  EN->>EN: assess(): installed? launchable? not Kembar itself?<br/>known-incompatible list? already in profile?
-  EN-->>VM: CloneProgress(ANALYZE, done)
-  Note over EN: Stage 2 — Siapkan ruang
-  EN->>EN: environment() == Ready && profile not paused
-  EN-->>VM: CloneProgress(PREPARE, done)
-  Note over EN,AG: Stage 3 — Pasang
-  EN->>AG: Command.InstallExisting(pkg, requestId) via cross-profile intent
-  AG->>DPM: installExistingPackage(admin, pkg)
-  DPM-->>AG: true / false
-  AG-->>EN: CommandResult(requestId, ok | errorCode)
-  EN-->>VM: CloneProgress(INSTALL, done)
-  Note over EN,AG: Stage 4 — Atur
-  EN->>AG: Command.ApplySettings(pkg, defaults)
-  AG->>DPM: e.g. setPackagesSuspended(false), runtime-permission policy = prompt
-  AG-->>EN: CommandResult(ok)
-  Note over EN,LA: Stage 5 — Verifikasi
-  EN->>LA: getActivityList(pkg, workUser)
-  LA-->>EN: launcher activity found
-  EN-->>REPO: CloneProgress(VERIFY, done) + Created(cloneRef)
-  REPO->>DB: insert clones(status=ACTIVE), update clone_jobs(SUCCEEDED)
-  REPO-->>VM: Flow completes
-  VM-->>UI: UiState(success) + UiEffect.ShowSnackbar
-  alt User taps "Batal" before Stage 3 returns
+  VM->>REPO: startClone(packageName)
+  REPO->>DB: insert clones(status=CREATING, slot=n, clone_package=pkg.kembarN)<br/>insert clone_jobs(state=QUEUED)
+  REPO->>WM: enqueueUniqueWork("clone-<id>", CloneWorker, expedited)
+  WM->>WM: setForeground(dataSync notification "Membuat clone…")
+  Note over WM,AN: 1. Analisis
+  WM->>AN: analyze(packageName)
+  AN-->>WM: base + splits, targetSdk, warnings, free space OK
+  Note over WM,ZW: 2. Salin
+  WM->>WM: stream-copy base.apk + splits to cache/clone-work/<jobId>/
+  Note over WM,ZW: 3. Modifikasi
+  WM->>ZW: patch manifest (package, authorities, permissions, label), patch arsc name,<br/>rewrite ZIP with 16 KB/4 B alignment, drop v1 signature files
+  Note over WM,SG: 4. Tanda tangan
+  WM->>KS: getOrCreateKey(cloneId)
+  KS-->>WM: PrivateKey + X509Certificate
+  WM->>SG: sign(each APK, v2+v3)
+  Note over WM,PI: 5. Pasang
+  WM->>PI: createSession, write base + splits, commit
+  PI-->>WM: STATUS_PENDING_USER_ACTION(confirmIntent)
+  WM-->>VM: progress(INSTALL, needsUserAction = true)
+  alt UI in foreground
+    VM-->>UI: UiEffect.LaunchInstallConfirm(intent)
+  else UI in background
+    WM->>U: Notification "Ketuk untuk memasang clone"
+  end
+  U->>PI: Confirm "Instal"
+  PI-->>WM: STATUS_SUCCESS
+  WM->>DB: clones(status=ACTIVE, version), clone_jobs(SUCCEEDED)
+  WM->>WM: delete work directory
+  WM-->>VM: WorkInfo SUCCEEDED
+  VM-->>UI: UiState(success): "Clone siap dipakai"
+  opt User taps "Batal" (any stage before the install commit)
     UI->>VM: UiEvent.Cancel
-    VM->>REPO: cancel job (coroutine cancellation)
-    REPO->>EN: (if Stage 3 already succeeded) remove(cloneRef) to roll back
-    REPO->>DB: clone_jobs(state=CANCELLED)
+    VM->>REPO: cancel(jobId) → WorkManager.cancelWorkById
+    WM->>WM: coroutine cancelled → abandon session, delete work directory
+    WM->>DB: clone_jobs(CANCELLED), delete clones row (status CREATING)
   end
 ```
 
-Why this is not a WorkManager job: a cross-profile command needs Kembar's UI in the
-foreground (background activity starts are blocked since Android 10), and the whole
-pipeline takes about 1–3 seconds. The job runs in a `viewModelScope`-launched coroutine
-backed by the `clone_jobs` row. After process death the row is found in `RUNNING` state
-and **reconciled** on next start: Kembar checks `LauncherApps` for the package in the
-profile and marks the job `SUCCEEDED` or `FAILED`. WorkManager is used for periodic health
-and update checks, which need no UI.
+Process death and configuration changes: the job is a unique WorkManager work item and
+the UI only observes `WorkInfo`, so rotating the screen or killing the process doesn't
+lose it. If the worker is killed mid-pipeline, WorkManager retries it. The retry starts
+again from **Analisis** with a clean work directory, because the stages are idempotent.
+A pending install session found at retry is abandoned first.
 
-## 5. Data model (Room, `:core:database`)
+## 5. Data model (Room, `:core:database`, Phase 3)
 
-Schema export is enabled (`room.schemaLocation = $projectDir/schemas`). Every version bump
-ships an explicit `Migration` plus a `MigrationTestHelper` test.
+Schema export to `core/database/schemas`. Every version bump ships an explicit `Migration`
+and a `MigrationTestHelper` test.
 
 ```mermaid
 erDiagram
-  clones ||--o| clone_settings : has
-  clones ||--o{ clone_jobs : "created/repaired by"
+  clones ||--|| clone_settings : has
+  clones ||--o{ clone_jobs : "created/updated by"
   clones ||--o{ health_checks : "checked by"
 
   clones {
-    TEXT id PK "UUID"
-    TEXT package_name "NOT NULL"
-    TEXT engine "NOT NULL, e.g. WORK_PROFILE"
-    INTEGER profile_serial "NOT NULL, UserManager serial number"
-    INTEGER slot "NOT NULL DEFAULT 1, reserved for multi-clone engines"
-    TEXT display_name "NOT NULL"
-    TEXT custom_icon_file "NULL, file name in app-private storage"
-    TEXT badge_style "NOT NULL"
-    TEXT status "NOT NULL: ACTIVE | NEEDS_ATTENTION | BROKEN | REMOVING"
-    INTEGER source_version_code "NOT NULL, at creation"
+    TEXT id PK "UUID, also the FileKeystore alias"
+    TEXT source_package "NOT NULL, e.g. com.example.chat"
+    TEXT clone_package "NOT NULL UNIQUE, e.g. com.example.chat.kembar1"
+    INTEGER slot "NOT NULL, n in .kembarN"
+    TEXT display_name "NOT NULL, Kembar-side name"
+    TEXT custom_icon_file "NULL, app-private file"
+    TEXT badge_color "NOT NULL, token name"
+    TEXT status "NOT NULL: CREATING | ACTIVE | UPDATE_AVAILABLE | NEEDS_ATTENTION | BROKEN | REMOVING"
+    INTEGER source_version_code "NOT NULL, original version the clone was built from"
     TEXT source_version_name "NULL"
-    INTEGER last_seen_version_code "NOT NULL"
+    TEXT signer_cert_sha256 "NULL until signed, hex"
     INTEGER created_at "NOT NULL, epoch ms"
+    INTEGER updated_at "NOT NULL"
     INTEGER last_launched_at "NULL"
     INTEGER sort_order "NOT NULL"
-    INTEGER lock_enabled "NOT NULL DEFAULT 0"
   }
   clone_settings {
     TEXT clone_id PK "FK -> clones.id ON DELETE CASCADE"
-    INTEGER network_allowed "NOT NULL DEFAULT 1 (S5-gated)"
-    INTEGER suspended "NOT NULL DEFAULT 0"
-    TEXT sync_state "NOT NULL: PENDING | APPLIED | FAILED"
-    INTEGER updated_at "NOT NULL"
+    INTEGER lock_enabled "NOT NULL DEFAULT 0"
+    INTEGER network_blocked "NOT NULL DEFAULT 0 (spike S7)"
+    INTEGER update_alerts "NOT NULL DEFAULT 1"
   }
   clone_jobs {
-    TEXT id PK "UUID"
-    TEXT clone_id "NULL, FK -> clones.id ON DELETE SET NULL"
-    TEXT package_name "NOT NULL"
-    TEXT type "NOT NULL: CREATE | REPAIR | CLEAR_DATA | REMOVE"
-    TEXT stage "NOT NULL: ANALYZE | PREPARE | INSTALL | CONFIGURE | VERIFY"
-    TEXT state "NOT NULL: QUEUED | RUNNING | SUCCEEDED | FAILED | CANCELLED"
+    TEXT id PK "UUID = WorkManager work id"
+    TEXT clone_id "NOT NULL, FK -> clones.id ON DELETE CASCADE"
+    TEXT type "NOT NULL: CREATE | UPDATE | REPAIR"
+    TEXT stage "NOT NULL: ANALYZE | COPY | MODIFY | SIGN | INSTALL"
+    TEXT state "NOT NULL: QUEUED | RUNNING | WAITING_USER | SUCCEEDED | FAILED | CANCELLED"
     TEXT error_code "NULL, EngineError name"
     INTEGER created_at "NOT NULL"
     INTEGER updated_at "NOT NULL"
@@ -251,53 +210,50 @@ erDiagram
     TEXT clone_id "NOT NULL, FK -> clones.id ON DELETE CASCADE"
     INTEGER checked_at "NOT NULL"
     TEXT verdict "NOT NULL: HEALTHY | NEEDS_ATTENTION | BROKEN"
-    TEXT issues "NOT NULL, JSON array of IssueCode (kotlinx.serialization TypeConverter)"
+    TEXT issues "NOT NULL, JSON array of IssueCode (TypeConverter)"
   }
 ```
 
-Indexes and constraints:
+Constraints and indexes:
 
-- `clones`: `UNIQUE(package_name, profile_serial, slot)`; index on `status`.
-- `clone_jobs`: index on `(state)` and `(clone_id)`.
-- `health_checks`: index on `(clone_id, checked_at DESC)`. Keep only the last 10 per clone (pruned by the worker).
+- `clones`: `UNIQUE(clone_package)`, `UNIQUE(source_package, slot)`, index on `status`.
+- `clone_jobs`: index on `clone_id`, `state`.
+- `health_checks`: index on `(clone_id, checked_at)`. Keep only the last 10 per clone.
 
-Not in Room (DataStore, `:core:data`):
+DataStore (`:core:data`): `onboarding_completed`, `disclaimer_accepted_version`,
+`theme_mode`, `dynamic_color` (Phase 1). Added later: app lock config (PIN as a PBKDF2 hash
+with salt, the record encrypted with a Keystore key), `last_package_sequence` for
+`PackageManager.getChangedPackages()`, and `key_backup_reminder_dismissed_at`.
 
-- `onboarding_completed`, `disclaimer_accepted_version`, `theme_mode`, `dynamic_color`.
-- App lock: `lock_mode` (NONE / BIOMETRIC / PIN / BIOMETRIC_OR_PIN). The PIN is stored
-  only as a PBKDF2-HMAC-SHA256 hash with a random salt, and that record is AES-GCM
-  encrypted with a non-exportable Android Keystore key. The relock timeout is stored too.
-- `last_package_sequence` for `PackageManager.getChangedPackages()` (update awareness).
-- There is no analytics SDK at all, so there is no consent flag. Crash reports are opt-in and
-  local (share sheet) in v1.
+Kembar ships **no analytics SDK**. Crash reports are opt-in and local (share sheet).
 
-Why the Room DB isn't SQLCipher-encrypted: it holds only clone metadata (package names,
-labels, timestamps), never clone app data. File-based encryption already protects it at
-rest. Adding SQLCipher would bring a native library for little gain. The **settings backup
-export** is encrypted (AES-256-GCM with a key derived from the user's passphrase), so it
-can be restored on another device. A Keystore key can't leave the device, so it isn't used for exports.
+The Room DB holds metadata only, so file-based encryption is enough at rest. The secrets
+(clone signing keys) are in `FileKeystore`, which is Keystore-wrapped. Exported backups
+(settings + keys) are passphrase-encrypted so they can be restored on another device.
 
-## 6. Product feature feasibility under the managed-profile engine
+## 6. Feature feasibility
 
-| # | Feature (brief) | v1 status | Notes |
-|---|-----------------|-----------|-------|
-| 1 | App picker with search/filter/sort, icon/version/size, incompatibility hints | ✅ | `<queries>` for launcher intents, no `QUERY_ALL_PACKAGES`. Size via `StorageStatsManager` only if usage access is granted; otherwise hidden. |
-| 2 | Clone creation with stages + cancel | ✅ | Stages renamed (ADR-0001 L14). Cancel is possible until Stage 3 commits; later cancel = rollback. |
-| 3 | Launch, rename, icon/badge, pin shortcut, clear data, uninstall, backup | ⚠️ | Rename/icon are Kembar-side only (L5). Backup = Kembar settings only (L4). Uninstall depends on S7. |
-| 4 | Multiple clones per app | ❌ | L1. Schema is ready for a future engine. |
-| 5 | Notifications, network, storage usage, permission overview | ⚠️ | Notifications → system settings deep link (L7). Network depends on S5 (L8). Storage depends on S6. Permission overview uses `DevicePolicyManager.getPermissionGrantState` in the profile. |
-| 6 | Health check + repair | ✅ | Checks: profile exists and is not paused, Kembar is still profile owner, package installed for the profile user, launcher activity present, not suspended unexpectedly. Repair = re-run `installExistingPackage` or re-apply settings. |
-| 7 | Update awareness | ✅ (adjusted) | `PackageManager.getChangedPackages(sequence)` in a periodic worker plus a `LauncherApps.Callback` while running. The clone is updated automatically together with the original (L10). |
-| 8 | App lock | ⚠️ | Kembar biometric/PIN lock for Kembar UI and shortcuts. Android work-profile lock offered as the strong option (L6). |
-| 9 | Onboarding, help, incompatible-apps explainer, disclaimer | ✅ | Also explains that WhatsApp and Instagram have built-in multi-account support. |
+| # | Feature | v1 status | Notes |
+|---|---------|-----------|-------|
+| 1 | App picker + incompatibility hints | ✅ | `<queries>` launcher intent, no `QUERY_ALL_PACKAGES`. Hints: system app, targetSdk < 23, `sharedUserId`, Google services markers, known list. |
+| 2 | Staged creation + cancel | ✅ | Matches brief stages. Cancel works until the user confirms the system install dialog. |
+| 3 | Launch, rename, icon/badge, pin shortcut, clear data, uninstall, backup | ⚠️ | Rename/icon change Kembar's list + shortcuts. The system label is fixed at creation ("… · Kembar n"). Clear data → App Info (L9). Uninstall → system confirm. Backup = settings + keys (L8). |
+| 4 | Multiple clones per app | ✅ | `.kembar1`, `.kembar2`, … each with its own key. |
+| 5 | Notifications, network, storage, permissions | ⚠️ | Notifications → system settings for the clone package. Storage via `StorageStatsManager` (needs usage access, optional). Permissions via `PackageInfo.requestedPermissionsFlags` (Kembar can see packages it installed). Network depends on S7. |
+| 6 | Health check + repair | ✅ | Checks: clone installed, signer matches the stored key, original still installed, launch intent resolvable, key present in `FileKeystore`. Repair = rebuild + reinstall as an update. |
+| 7 | Update awareness | ✅ | `getChangedPackages(sequence)` in a periodic worker → original `versionCode` > clone's `source_version_code` → notification + "Perbarui clone" (rebuild as update, data kept). |
+| 8 | App lock | ⚠️ | Guards launches through Kembar and its shortcuts only. A clone opened from the launcher can't be intercepted (stated in UI). |
+| 9 | Onboarding, help, explainer, disclaimer | ✅ | |
 
-## 7. Permissions (preview; full rationale table in Phase 6)
+## 7. Permissions (full rationale table in Phase 6)
 
-| Permission / declaration | Why | If denied / unavailable |
+| Permission | Why | If denied |
 |---|---|---|
-| `<queries>` with `MAIN`/`LAUNCHER` intent | List launchable apps on Android 11+ package visibility | n/a (declaration, not a grant) |
-| `BIND_DEVICE_ADMIN` (on the receiver, not requested) | Required for the `DeviceAdminReceiver` that becomes profile owner | n/a |
-| `POST_NOTIFICATIONS` (Android 13+) | Update / health alerts | Alerts appear only inside the app (Beranda banner) |
-| `USE_BIOMETRIC` | Optional app lock | PIN-only lock |
-| `PACKAGE_USAGE_STATS` (special access, optional) | App sizes in picker / storage usage | Sizes hidden; link to system settings |
-| **Not used:** `QUERY_ALL_PACKAGES`, `REQUEST_INSTALL_PACKAGES`, `FOREGROUND_SERVICE*`, `INTERNET` (until S5 shows the in-profile VPN needs it) | — | — |
+| `<queries>` MAIN/LAUNCHER | List launchable apps (Android 11+ package visibility) | n/a |
+| `REQUEST_INSTALL_PACKAGES` + user's "Instal aplikasi tidak dikenal" toggle | Install clones | Cloning is impossible; Kembar explains and opens the toggle (`ACTION_MANAGE_UNKNOWN_APP_SOURCES`) |
+| `REQUEST_DELETE_PACKAGES` | Uninstall clones from inside Kembar | Falls back to `ACTION_DELETE` |
+| `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC` | Keep a long clone job alive with a visible notification (local file processing) | n/a (normal permissions) |
+| `POST_NOTIFICATIONS` (13+) | Progress, install prompts in background, update alerts | Job continues. Install prompt waits until the user reopens Kembar |
+| `USE_BIOMETRIC` | Optional app lock | PIN only |
+| `PACKAGE_USAGE_STATS` (optional special access) | App sizes / storage usage | Sizes hidden |
+| **Not used:** `QUERY_ALL_PACKAGES`, `INTERNET` (until S7 needs it), any location/contacts/storage permissions | | |
